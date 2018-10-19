@@ -81,7 +81,7 @@ namespace photon
 	public:
 		IOCPService()
 		{
-			m_iocp = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, 0);
+			m_iocp = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, NULL, 0);
 			if (nullptr == m_iocp)
 			{
 				std::cout << "Create io completin port failed:" << ::GetLastError() << std::endl;
@@ -164,7 +164,7 @@ namespace photon
 
 		virtual bool startRead(Connection* connection) override
 		{
-			if (connection->m_state & IOComponent::IOComponentState::READING)
+			if (connection->m_state.load() & IOComponent::IOComponentState::READING)
 			{
 				//read未完成，不能再次start	
 				return false;
@@ -180,14 +180,14 @@ namespace photon
 			ConnectionOverlapped* overlapped = &((ConnectionCompletionKey*)data)->m_readOverlapped;
 			overlapped->m_operation = Overlapped::READ;
 
-			//Buffer buffer = connection->m_readQueue.reserve();
-			//if (!buffer)
-			//{
-			//	return false;
-			//}
+			Buffer buffer = connection->m_readQueue.reserve();
+			/*if (!buffer)      //empty buffer also deliver
+			{
+				return false;
+			}*/
 
-			//overlapped->m_buffer.buf = buffer.getData();
-			//overlapped->m_buffer.len = buffer.getSize();
+			overlapped->m_buffer.buf = buffer.getData();
+			overlapped->m_buffer.len = buffer.getSize();
 
 			DWORD numberOfBytesRecv = 0;
 			DWORD flags = 0;
@@ -196,8 +196,7 @@ namespace photon
 			if (0 == ret)
 			{
 				connection->m_state |= IOComponent::IOComponentState::READING;
-				//connection->m_readQueue.push(numberOfBytesRecv);
-				//return startRead(connection);
+				//connection->m_readQueue.push(numberOfBytesRecv);  //handled in completion
 				return true;
 			}
 			else if (SOCKET_ERROR == ret)
@@ -219,7 +218,7 @@ namespace photon
 
 		virtual bool startWrite(Connection* connection) override
 		{
-			if (connection->m_state & IOComponent::IOComponentState::WRITING)
+			if (connection->m_state.load() & IOComponent::IOComponentState::WRITING)
 			{
 				//write未完成，不能再次start
 				return false;
@@ -235,12 +234,22 @@ namespace photon
 			ConnectionOverlapped* overlapped = &((ConnectionCompletionKey*)data)->m_writeOverlapped;
 			overlapped->m_operation = Overlapped::WRITE;
 
+            Buffer buffer = connection->m_readQueue.front();
+            /*if (!buffer)      //empty buffer also deliver
+            {
+                return false;
+            }*/
+
+            overlapped->m_buffer.buf = buffer.getData();
+            overlapped->m_buffer.len = buffer.getSize();
+
 			DWORD numberOfBytesSend = 0;
 			int ret = ::WSASend(connection->getSocket().getSocket(), &overlapped->m_buffer, 1, &numberOfBytesSend, 0, overlapped, nullptr);
 
 			if (0 == ret)
 			{
 				connection->m_state |= IOComponent::IOComponentState::WRITING;
+                //connection->m_readQueue.pop(numberOfBytesRecv);  //handled in completion
 				return true;
 			}
 			else if (SOCKET_ERROR == ret)
@@ -271,7 +280,7 @@ namespace photon
 
 		virtual bool startAccept(Acceptor* acceptor) override
 		{
-			if (acceptor->m_state & IOComponent::ACCEPTING)
+			if (acceptor->m_state.load() & IOComponent::ACCEPTING)
 			{
 				//accept未完成，不能再次start
 				return false;
@@ -322,7 +331,7 @@ namespace photon
 
 		virtual bool startConnect(Connection* connection, const sockaddr* addr, int addrLen, const sockaddr* localAddr = nullptr) override
 		{
-			if (connection->m_state & (IOComponent::CONNECTING | IOComponent::CONNECTED))
+			if (connection->m_state.load() & (IOComponent::CONNECTING | IOComponent::CONNECTED))
 			{
 				//已connect，不能再次start
 				return false;
@@ -377,40 +386,6 @@ namespace photon
 			return false;
 		}
 
-		virtual bool read(Connection* connection) override
-		{
-			Buffer buffer = connection->m_readQueue.reserve();
-			if (!buffer)
-			{
-				return true;
-			}
-			int ret = connection->getSocket().read(buffer.getData(), buffer.getSize());
-			if (ret <= 0)
-			{
-				return false;
-			}
-
-			connection->m_readQueue.push(ret);
-			return true;
-		}
-
-		virtual bool write(Connection* connection) override
-		{
-			const Buffer buffer = connection->m_writeQueue.front();
-			if (!buffer)
-			{
-				return true;
-			}
-			int ret = connection->getSocket().write(buffer.getData(), buffer.getSize());
-			if (ret <= 0)
-			{
-				return false;
-			}
-
-			connection->m_writeQueue.pop(ret);
-			return true;
-		}
-
 		virtual int getCompleteIOComponent(IOCompleteEvent(&completeEvents)[MAX_COMPLETE_COUNT], int32_t timeOutMilliSeconds) override
 		{
 			DWORD numberOfBytesTransferred = 0;
@@ -439,8 +414,7 @@ namespace photon
 
 												  completeEvents[0].m_component = connection;
 
-												  if (!read(connection))
-													  //if (numberOfBytesTransferred == 0)
+                                                  if (numberOfBytesTransferred == 0 && !connection->read())
 												  {
 													  connection->m_state |= IOComponent::IOERROR;
 													  completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
@@ -449,11 +423,19 @@ namespace photon
 												  {
 													  completeEvents[0].m_type = IOCompleteEvent::READ_COMPLETE;
 
-													  //connection->m_readQueue.push(numberOfBytesTransferred);
-													  if (!connection->m_readQueue.full())
-													  {
-														  startRead(connection);
-													  }
+													  connection->m_readQueue.push(numberOfBytesTransferred);
+                                                      if (!connection->m_readQueue.full())
+                                                      {
+                                                          if (!startRead(connection))
+                                                          {
+                                                              connection->m_state |= IOComponent::IOERROR;
+                                                              completeEvents[1].m_type = IOCompleteEvent::IO_ERROR;
+                                                              completeEvents[1].m_component = connection;
+
+                                                              connection->m_readQueue.unlock();
+                                                              return 2;
+                                                          }
+                                                      }
 												  }
 
 												  connection->m_readQueue.unlock();
@@ -469,7 +451,7 @@ namespace photon
 
 												   completeEvents[0].m_component = connection;
 
-												   if (!write(connection))
+												   if (numberOfBytesTransferred == 0 && !connection->write())
 												   {
 													   connection->m_state |= IOComponent::IOERROR;
 													   completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
@@ -478,9 +460,18 @@ namespace photon
 												   {
 													   completeEvents[0].m_type = IOCompleteEvent::WRITE_COMPLETE;
 
+                                                       connection->m_readQueue.pop(numberOfBytesTransferred);
 													   if (!connection->m_writeQueue.empty())
 													   {
-														   startWrite(connection);
+                                                           if (!startWrite(connection))
+                                                           {
+                                                               connection->m_state |= IOComponent::IOERROR;
+                                                               completeEvents[1].m_type = IOCompleteEvent::IO_ERROR;
+                                                               completeEvents[1].m_component = connection;
+
+                                                               connection->m_readQueue.unlock();
+                                                               return 2;
+                                                           }
 													   }
 												   }
 
@@ -503,13 +494,19 @@ namespace photon
 
 													connection->m_state &= ~IOComponent::CONNECTING;
 													connection->m_state |= IOComponent::CONNECTED;
-
-													acceptor->connection = connection;
-
-													startAccept(acceptor);
+                                                    connection->m_acceptor = acceptor;
 
 													completeEvents[1].m_component = connection;
 													completeEvents[1].m_type = IOCompleteEvent::ACCEPT_COMPLETE;
+
+                                                    if (!startAccept(acceptor))
+                                                    {
+                                                        acceptor->m_state |= IOComponent::IOERROR;
+                                                        completeEvents[2].m_type = IOCompleteEvent::IO_ERROR;
+                                                        completeEvents[2].m_component = acceptor;
+                                                        return 3;
+                                                    }
+
 													return 2;
 			}
 

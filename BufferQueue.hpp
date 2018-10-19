@@ -17,8 +17,7 @@ namespace photon
 	public:
 		BufferQueue() :
 			m_in(0u),
-			m_out(0u),
-			m_valid(true)
+			m_out(0u)
 		{
 
 		}
@@ -236,11 +235,6 @@ namespace photon
 
 		bool push(const char* buffer, uint32_t length)
 		{
-			if (!m_valid)
-			{
-				return false;
-			}
-
 			while (freeSize() < length)
 			{
 				//队列空闲空间不足，需要等待取数据，留出足够的空间
@@ -272,11 +266,6 @@ namespace photon
 
 		bool pop(char* buffer, uint32_t length)
 		{
-			if (!m_valid)
-			{
-				return false;
-			}
-
 			while (dataSize() < length)
 			{
 				//队列数据不足，需要等待放入数据
@@ -392,16 +381,10 @@ namespace photon
 			m_mutex.unlock();
 		}
 
-		operator bool() const
-		{
-			return m_valid;
-		}
-
 	private:
 		uint32_t m_in;
 		uint32_t m_out;
 		typename std::enable_if<Length != 0 && (Length & (Length - 1)) == 0, char>::type m_buffer[Length];
-		bool m_valid;
 		std::mutex m_mutex;
 	};
 

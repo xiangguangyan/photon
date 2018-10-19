@@ -170,7 +170,7 @@ int main()
 	EventHandler eventHandler;
 	IOCPService service;
 
-	for (int i = 0; i < 10; ++i)
+	for (int i = 0; i < 8; ++i)
 	{
 		std::thread([&service]()
 		{
@@ -203,7 +203,7 @@ int main()
 	{
 		if (!connection.postPacket(&packet))
 		{
-			std::cout << "post packet failed" << std::endl;
+			//std::cout << "post packet failed" << std::endl;
 		}
 
 		//Sleep(1000);

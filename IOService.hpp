@@ -52,9 +52,6 @@ namespace photon
 		virtual bool startAccept(Acceptor* acceptor) = 0;
 		virtual bool startConnect(Connection* connection, const sockaddr* addr, int addrLen, const sockaddr* localAddr = nullptr) = 0;
 
-		virtual bool read(Connection* connection) = 0;
-		virtual bool write(Connection* connection) = 0;
-
 		static const unsigned int MAX_COMPLETE_COUNT = 1024;
 		virtual int getCompleteIOComponent(IOCompleteEvent(&completeEvents)[MAX_COMPLETE_COUNT], int32_t timeOutMilliSeconds) = 0;
 

@@ -64,7 +64,7 @@ namespace photon
 
 		uint32_t getState() const
 		{
-			return m_state;
+			return m_state.load();
 		}
 
 	private:

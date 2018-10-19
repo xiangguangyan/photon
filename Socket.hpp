@@ -16,7 +16,19 @@ namespace photon
 	{
 	public:
 		Socket(const Socket& socket) = delete;
+
+        Socket(Socket&& socket):
+            m_socket(socket.m_socket)
+        {
+            
+        }
+        
 		const Socket& operator = (const Socket& socket) = delete;
+
+        const Socket& operator = (Socket&& socket)
+        {
+            m_socket = socket.m_socket;
+        }
 
 		Socket(SOCKET socket = INVALID_SOCKET) :
 			m_socket(socket)

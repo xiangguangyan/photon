@@ -54,6 +54,7 @@ namespace photon
 		}
 		virtual bool handleIOError()
 		{
+            m_eventHandler->handleAcceptorError(this);
 			return m_ioService->removeAcceptor(this) && close();
 		}
 
@@ -68,7 +69,6 @@ namespace photon
 		int m_addressFamily;
 		int m_type;
 		int m_protocol;
-		Connection* connection;
 	};
 }
 

@@ -20,14 +20,20 @@ namespace photon
 			IOComponent(ioService, addressFamily, type, protocol),
 			m_packetResolver(packetResolver),
 			m_eventHandler(eventHandler),
-			m_gotHeader(false)
+			m_gotHeader(false),
+            m_acceptor(nullptr)
 		{
 
 		}
 
+        Acceptor* getAcceptor()
+        {
+            return m_acceptor;
+        }
+
 		bool connected()
 		{
-			return 0 != (m_state & IOComponent::CONNECTED);
+			return m_state.load() & IOComponent::CONNECTED;
 		}
 
 		bool connect(const sockaddr* addr, int addrLen, bool asyn = false, const sockaddr* localAddr = nullptr)
@@ -54,6 +60,40 @@ namespace photon
 			return m_ioService->addConnection(this) && m_ioService->startRead(this);
 		}
 
+        bool read()
+        {
+            Buffer buffer = m_readQueue.reserve();
+            if (!buffer)
+            {
+                return true;
+            }
+            int ret = m_socket.read(buffer.getData(), buffer.getSize());
+            if (ret <= 0)
+            {
+                return false;
+            }
+
+            m_readQueue.push(ret);
+            return true;
+        }
+
+        bool write()
+        {
+            const Buffer buffer = m_writeQueue.front();
+            if (!buffer)
+            {
+                return true;
+            }
+            int ret = m_socket.write(buffer.getData(), buffer.getSize());
+            if (ret <= 0)
+            {
+                return false;
+            }
+
+            m_writeQueue.pop(ret);
+            return true;
+        }
+
 		bool postPacket(const Packet* packet)
 		{
 			m_writeQueue.lock();
@@ -64,7 +104,7 @@ namespace photon
 				return false;
 			}
 
-			if (!(m_state & IOComponentState::WRITING))
+			if (!(m_state.load() & IOComponentState::WRITING))
 			{
 				if (!m_ioService->startWrite(this))
 				{
@@ -90,7 +130,7 @@ namespace photon
 				m_gotHeader = m_packetResolver->getPacketHeader(m_header, m_readQueue);
 				if (!m_gotHeader)
 				{
-					if (!(m_state & IOComponent::READING))
+					if (!(m_state.load() & IOComponent::READING))
 					{
 						m_ioService->startRead(this);
 					}
@@ -112,7 +152,7 @@ namespace photon
 				m_gotHeader = m_packetResolver->getPacketHeader(m_header, m_readQueue);
 			}
 
-			if (!(m_state & IOComponent::READING))
+			if (!(m_state.load() & IOComponent::READING))
 			{
 				m_ioService->startRead(this);
 			}
@@ -139,22 +179,24 @@ namespace photon
 		{
 			m_readQueue.lock();
 			m_ioService->addConnection(this);
-			m_ioService->startRead(this);
+			bool ret = m_ioService->startRead(this);
 			m_readQueue.unlock();
 			m_eventHandler->handleAccepted(this);
-			return true;
+			return ret;
 		}
 
 		virtual bool handleConnectComplete()
 		{
 			m_readQueue.lock();
-			m_ioService->startRead(this);
+			bool ret = m_ioService->startRead(this);
 			m_readQueue.unlock();
-			return true;
+            m_eventHandler->handleConnected(this);
+			return ret;
 		}
 
 		virtual bool handleIOError()
 		{
+            m_eventHandler->handleConnectionError(this);
 			return m_ioService->removeConnection(this) && close();
 		}
 
@@ -165,6 +207,7 @@ namespace photon
 		EventHandler* m_eventHandler;
 		bool m_gotHeader;
 		PacketHeader m_header;
+        Acceptor* m_acceptor;
 	};
 }
 

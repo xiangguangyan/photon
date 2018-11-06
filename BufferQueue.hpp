@@ -389,8 +389,8 @@ namespace photon
 		std::mutex m_mutex;
 	};
 
-	typedef BufferQueue<1024 * 256> ReadBufferQueue;
-	typedef BufferQueue<1024 * 256> WriteBufferQueue;
+	typedef BufferQueue<1024 * 1024> ReadBufferQueue;
+	typedef BufferQueue<1024 * 1024> WriteBufferQueue;
 }
 
 #endif //_BUFFER_QUEUE_HPP_

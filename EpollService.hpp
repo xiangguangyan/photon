@@ -37,7 +37,7 @@ namespace photon
         {
             struct epoll_event event;
             event.data.ptr = connection;
-            event.events = 0u;
+            event.events = EPOLLET;
             if (::epoll_ctl(m_epoll, EPOLL_CTL_ADD, connection->getSocket().getSocket(), &event) != 0)
             {
                 std::cout << "Add connection epoll ctl failed:" << errno << std::endl;
@@ -103,11 +103,11 @@ namespace photon
             
             if (connection->m_state.load() & IOComponent::IOComponentState::WRITING)
             {
-                event.events = EPOLLIN | EPOLLOUT;
+                event.events = EPOLLIN | EPOLLOUT | EPOLLET;
             }
             else
             {
-                event.events = EPOLLIN;
+                event.events = EPOLLIN | EPOLLET;
             }
 
             if (::epoll_ctl(m_epoll, EPOLL_CTL_MOD, connection->getSocket().getSocket(), &event) != 0)
@@ -132,11 +132,11 @@ namespace photon
 
             if (connection->m_state.load() & IOComponent::IOComponentState::WRITING)
             {
-                event.events = EPOLLOUT;
+                event.events = EPOLLOUT | EPOLLET;
             }
             else
             {
-                event.events = 0u;
+                event.events = EPOLLET;
             }
 
             if (::epoll_ctl(m_epoll, EPOLL_CTL_MOD, connection->getSocket().getSocket(), &event) != 0)
@@ -161,11 +161,11 @@ namespace photon
 
             if (connection->m_state.load() & IOComponent::IOComponentState::READING)
             {
-                event.events = EPOLLIN | EPOLLOUT;
+                event.events = EPOLLIN | EPOLLOUT | EPOLLET;
             }
             else
             {
-                event.events = EPOLLOUT;
+                event.events = EPOLLOUT | EPOLLET;
             }
 
             if (::epoll_ctl(m_epoll, EPOLL_CTL_MOD, connection->getSocket().getSocket(), &event) != 0)
@@ -190,11 +190,11 @@ namespace photon
 
             if (connection->m_state.load() & IOComponent::IOComponentState::READING)
             {
-                event.events = EPOLLIN ;
+                event.events = EPOLLIN | EPOLLET;
             }
             else
             {
-                event.events = 0u;
+                event.events = EPOLLET;
             }
 
             if (::epoll_ctl(m_epoll, EPOLL_CTL_MOD, connection->getSocket().getSocket(), &event) != 0)

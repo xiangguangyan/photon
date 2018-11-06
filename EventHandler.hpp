@@ -5,13 +5,10 @@
 
 namespace photon
 {
-	class Packet;
-	class Connection;
-	class Acceptor;
-}
+    class Packet;
+    class Connection;
+    class Acceptor;
 
-namespace photon
-{
 	class EventHandler
 	{
 	public:
@@ -19,11 +16,13 @@ namespace photon
 		{
 			//std::cout << ((DefaultPacket*)packet)->m_message << std::endl;
             static int count = 0;
-            static clock_t begin = clock();
-            if (++count == 1000000)
+            static auto begin = std::chrono::system_clock::now();
+            if (++count >= 1000000)
             {
-                std::cout << "1000000 packet time: " << clock() - begin << std::endl;
-                system("pause");
+                auto now = std::chrono::system_clock::now();
+                std::cout << "1000000 packet time: " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count() << " ms" << std::endl;
+                count = 0;
+                begin = now;
             }
 		}
 

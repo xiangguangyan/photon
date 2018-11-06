@@ -8,16 +8,15 @@
 
 namespace photon
 {
-	class IOService;
-	class IOCPService;
-}
+    class IOService;
+    class IOCPService;
+    class EpollService;
 
-namespace photon
-{
 	class IOComponent
 	{
 		friend class IOService;
 		friend class IOCPService;
+        friend class EpollService;
 
 	public:
 
@@ -44,13 +43,22 @@ namespace photon
 
 	public:
 		IOComponent(IOService* ioService, int addressFamily, int type, int protocol = 0) :
-			m_ioService(ioService),
-			m_state(0u),
 			m_userData(nullptr),
-			m_socket(addressFamily, type, protocol)
+			m_socket(addressFamily, type, protocol),
+            m_ioService(ioService),
+            m_state(0u)
 		{
 
 		}
+
+        IOComponent(IOService* ioService, Socket&& socket) :
+            m_userData(nullptr),
+            m_socket(std::move(socket)),
+            m_ioService(ioService),
+            m_state(0u)
+        {
+
+        }
 
 		Socket& getSocket()
 		{

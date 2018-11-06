@@ -28,6 +28,7 @@ namespace photon
 		virtual uint32_t getSize() const = 0;
 		virtual void serialize(WriteBufferQueue& writeQueue) const = 0;
 		virtual void deserialize(ReadBufferQueue& readQueue) = 0;
+        virtual ~Packet() {};
 
 	public:
 		PacketHeader m_header;			//用户只需要给header中m_type赋值，不需要对header进行序列化和反序列化

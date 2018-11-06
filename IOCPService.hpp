@@ -1,7 +1,8 @@
+#ifdef _WIN32
+
 #ifndef _IOCP_SERVICE_HPP_
 #define _IOCP_SERVICE_HPP_
 
-#include <WinSock2.h>
 #include <mswsock.h>
 #include <iostream>
 
@@ -88,6 +89,14 @@ namespace photon
 			}
 		}
 
+        ~IOCPService()
+        {
+            if (nullptr != m_iocp)
+            {
+                CloseHandle(m_iocp);
+            }
+        }
+
 		virtual bool addConnection(Connection* connection) override
 		{
 			if (nullptr != connection->m_userData)
@@ -107,6 +116,7 @@ namespace photon
 			}
 
 			connection->m_userData = completionKey;
+            connection->getSocket().setBlock(false);
 			return true;
 		}
 
@@ -129,6 +139,7 @@ namespace photon
 			}
 
 			acceptor->m_userData = completionKey;
+            acceptor->getSocket().setBlock(false);
 			return true;
 		}
 
@@ -166,8 +177,7 @@ namespace photon
 		{
 			if (connection->m_state.load() & IOComponent::IOComponentState::READING)
 			{
-				//read未完成，不能再次start	
-				return false;
+                return true;
 			}
 
 			void* data = connection->m_userData;
@@ -220,8 +230,7 @@ namespace photon
 		{
 			if (connection->m_state.load() & IOComponent::IOComponentState::WRITING)
 			{
-				//write未完成，不能再次start
-				return false;
+                return true;
 			}
 
 			void* data = connection->m_userData;
@@ -282,8 +291,7 @@ namespace photon
 		{
 			if (acceptor->m_state.load() & IOComponent::ACCEPTING)
 			{
-				//accept未完成，不能再次start
-				return false;
+                return true;
 			}
 
 			void* data = acceptor->m_userData;
@@ -329,9 +337,9 @@ namespace photon
 			return connectExFunction;
 		}
 
-		virtual bool startConnect(Connection* connection, const sockaddr* addr, int addrLen, const sockaddr* localAddr = nullptr) override
+		virtual bool startConnect(Connection* connection, const sockaddr* addr, socklen_t addrLen, const sockaddr* localAddr = nullptr) override
 		{
-			if (connection->m_state.load() & (IOComponent::CONNECTING | IOComponent::CONNECTED))
+			if (connection->m_state.load() & (IOComponent::IOComponentState::CONNECTING | IOComponent::IOComponentState::CONNECTED))
 			{
 				//已connect，不能再次start
 				return false;
@@ -386,7 +394,7 @@ namespace photon
 			return false;
 		}
 
-		virtual int getCompleteIOComponent(IOCompleteEvent(&completeEvents)[MAX_COMPLETE_COUNT], int32_t timeOutMilliSeconds) override
+		virtual int getCompleteIOComponent(IOCompleteEvent(&completeEvents)[MAX_SOCKET_COUNT], int32_t timeOutMilliSeconds) override
 		{
 			DWORD numberOfBytesTransferred = 0;
 			ULONG_PTR completionKey = 0;
@@ -410,13 +418,13 @@ namespace photon
 			{
 												  Connection* connection = ((ConnectionCompletionKey*)completionKey)->m_connection;
 												  connection->m_readQueue.lock();
-												  connection->m_state &= ~IOComponent::READING;
+												  connection->m_state &= ~IOComponent::IOComponentState::READING;
 
 												  completeEvents[0].m_component = connection;
 
                                                   if (numberOfBytesTransferred == 0 && !connection->read())
 												  {
-													  connection->m_state |= IOComponent::IOERROR;
+													  connection->m_state |= IOComponent::IOComponentState::IOERROR;
 													  completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
 												  }
 												  else
@@ -428,12 +436,8 @@ namespace photon
                                                       {
                                                           if (!startRead(connection))
                                                           {
-                                                              connection->m_state |= IOComponent::IOERROR;
-                                                              completeEvents[1].m_type = IOCompleteEvent::IO_ERROR;
-                                                              completeEvents[1].m_component = connection;
-
-                                                              connection->m_readQueue.unlock();
-                                                              return 2;
+                                                              connection->m_state |= IOComponent::IOComponentState::IOERROR;
+                                                              completeEvents[0].m_type |= IOCompleteEvent::IO_ERROR;
                                                           }
                                                       }
 												  }
@@ -447,13 +451,13 @@ namespace photon
 			{
 												   Connection* connection = ((ConnectionCompletionKey*)completionKey)->m_connection;
 												   connection->m_writeQueue.lock();
-												   connection->m_state &= ~IOComponent::WRITING;
+												   connection->m_state &= ~IOComponent::IOComponentState::WRITING;
 
 												   completeEvents[0].m_component = connection;
 
 												   if (numberOfBytesTransferred == 0 && !connection->write())
 												   {
-													   connection->m_state |= IOComponent::IOERROR;
+													   connection->m_state |= IOComponent::IOComponentState::IOERROR;
 													   completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
 												   }
 												   else
@@ -465,12 +469,8 @@ namespace photon
 													   {
                                                            if (!startWrite(connection))
                                                            {
-                                                               connection->m_state |= IOComponent::IOERROR;
-                                                               completeEvents[1].m_type = IOCompleteEvent::IO_ERROR;
-                                                               completeEvents[1].m_component = connection;
-
-                                                               connection->m_readQueue.unlock();
-                                                               return 2;
+                                                               connection->m_state |= IOComponent::IOComponentState::IOERROR;
+                                                               completeEvents[0].m_type |= IOCompleteEvent::IO_ERROR;
                                                            }
 													   }
 												   }
@@ -492,8 +492,8 @@ namespace photon
 													SOCKET listenSocket = acceptor->getSocket().getSocket();
 													connection->getSocket().setOption(SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, (const char*)&listenSocket, sizeof(listenSocket));
 
-													connection->m_state &= ~IOComponent::CONNECTING;
-													connection->m_state |= IOComponent::CONNECTED;
+													connection->m_state &= ~IOComponent::IOComponentState::CONNECTING;
+													connection->m_state |= IOComponent::IOComponentState::CONNECTED;
                                                     connection->m_acceptor = acceptor;
 
 													completeEvents[1].m_component = connection;
@@ -501,10 +501,8 @@ namespace photon
 
                                                     if (!startAccept(acceptor))
                                                     {
-                                                        acceptor->m_state |= IOComponent::IOERROR;
-                                                        completeEvents[2].m_type = IOCompleteEvent::IO_ERROR;
-                                                        completeEvents[2].m_component = acceptor;
-                                                        return 3;
+                                                        acceptor->m_state |= IOComponent::IOComponentState::IOERROR;
+                                                        completeEvents[0].m_type |= IOCompleteEvent::IO_ERROR;
                                                     }
 
 													return 2;
@@ -513,22 +511,22 @@ namespace photon
 			case Overlapped::IOOperation::CONNECT:
 			{
 													 Connection* connection = ((ConnectionCompletionKey*)completionKey)->m_connection;
-													 connection->m_state &= ~IOComponent::CONNECTING;
-
+													 
 													 completeEvents[0].m_component = connection;
 
 													 int seconds = 0;
 													 int bytes = sizeof(seconds);
-													 bool ret = connection->getSocket().getOption(SOL_SOCKET, SO_CONNECT_TIME, (char *)&seconds, bytes);
+													 bool ret = connection->getSocket().getOption(SOL_SOCKET, SO_CONNECT_TIME, &seconds, bytes);
 
 													 if (!ret || seconds == 0xFFFFFFFF)
 													 {
-														 connection->m_state |= IOComponent::IOERROR;
+														 connection->m_state |= IOComponent::IOComponentState::IOERROR;
 														 completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
 													 }
 													 else
 													 {
-														 connection->m_state |= IOComponent::CONNECTED;
+                                                         connection->m_state &= ~IOComponent::IOComponentState::CONNECTING;
+														 connection->m_state |= IOComponent::IOComponentState::CONNECTED;
 														 completeEvents[0].m_type = IOCompleteEvent::CONNECT_COMPLETE;
 													 }
 
@@ -549,3 +547,5 @@ namespace photon
 }
 
 #endif // _IOCP_SERVICE_HPP_
+
+#endif // _WIN32

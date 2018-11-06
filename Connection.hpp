@@ -14,6 +14,7 @@ namespace photon
 	{
 		friend class IOService;
 		friend class IOCPService;
+        friend class EpollService;
 
 	public:
 		Connection(IOService* ioService, PacketResolver* packetResolver, EventHandler* eventHandler, int addressFamily, int type, int protocol = 0) :
@@ -26,6 +27,16 @@ namespace photon
 
 		}
 
+        Connection(IOService* ioService, PacketResolver* packetResolver, EventHandler* eventHandler, Socket&& socket) :
+            IOComponent(ioService, std::move(socket)),
+            m_packetResolver(packetResolver),
+            m_eventHandler(eventHandler),
+            m_gotHeader(false),
+            m_acceptor(nullptr)
+        {
+
+        }
+
         Acceptor* getAcceptor()
         {
             return m_acceptor;
@@ -36,7 +47,7 @@ namespace photon
 			return m_state.load() & IOComponent::CONNECTED;
 		}
 
-		bool connect(const sockaddr* addr, int addrLen, bool asyn = false, const sockaddr* localAddr = nullptr)
+		bool connect(const sockaddr* addr, socklen_t addrLen, bool asyn = false, const sockaddr* localAddr = nullptr)
 		{
 			if (asyn)
 			{
@@ -51,6 +62,7 @@ namespace photon
 				}
 			}
 
+            m_socket.setBlock(true);
 			if (!m_socket.connect(addr, addrLen))
 			{
 				return false;
@@ -62,35 +74,45 @@ namespace photon
 
         bool read()
         {
-            Buffer buffer = m_readQueue.reserve();
-            if (!buffer)
+            while (Buffer buffer = m_readQueue.reserve())
             {
-                return true;
+                ssize_t ret = m_socket.read(buffer.getData(), buffer.getSize());
+                if (ret > 0)
+                {
+                    m_readQueue.push((uint32_t)ret);
+                }
+                else if (ret == -2)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
-            int ret = m_socket.read(buffer.getData(), buffer.getSize());
-            if (ret <= 0)
-            {
-                return false;
-            }
-
-            m_readQueue.push(ret);
+           
             return true;
         }
 
         bool write()
         {
-            const Buffer buffer = m_writeQueue.front();
-            if (!buffer)
+            while (const Buffer buffer = m_writeQueue.front())
             {
-                return true;
-            }
-            int ret = m_socket.write(buffer.getData(), buffer.getSize());
-            if (ret <= 0)
-            {
-                return false;
+                ssize_t ret = m_socket.write(buffer.getData(), buffer.getSize());
+                if (ret > 0)
+                {
+                    m_writeQueue.pop((uint32_t)ret);
+                }
+                else if (ret == -2)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
 
-            m_writeQueue.pop(ret);
             return true;
         }
 

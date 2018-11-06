@@ -96,7 +96,7 @@ namespace photon
 		SyncBufferQueue& operator<<(const std::string& value)
 		{
 			*this << (uint32_t)value.length();
-			push(value.c_str(), value.length());
+			push(value.c_str(), (uint32_t)value.length());
 			return *this;
 		}
 

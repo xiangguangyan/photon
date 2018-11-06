@@ -9,17 +9,20 @@ namespace photon
 {
 	class PacketResolver
 	{
+    private:
+        enum :uint32_t { MAGIC_NUM = 0x12345678 };
+
 	public:
 		virtual bool getPacketHeader(PacketHeader& header, ReadBufferQueue& readQueue) const
 		{
-			if (readQueue.dataSize() < sizeof(m_magicNum)+sizeof(header.m_type) + sizeof(header.m_chanelId) + sizeof(header.m_size))
+			if (readQueue.dataSize() < sizeof(MAGIC_NUM)+sizeof(header.m_type) + sizeof(header.m_chanelId) + sizeof(header.m_size))
 			{
 				return false;
 			}
 
 			uint32_t magicNum = 0;
 			readQueue >> magicNum;
-			if (magicNum != m_magicNum)
+			if (magicNum != MAGIC_NUM)
 			{
 				std::cout << "Invalid magic number:" << magicNum << std::endl;
 				return false;
@@ -32,13 +35,13 @@ namespace photon
 
 		virtual bool serialize(const Packet* packet, WriteBufferQueue& writeQueue) const
 		{
-			if (writeQueue.freeSize() < sizeof(m_magicNum)+sizeof(packet->m_header.m_type)
+			if (writeQueue.freeSize() < sizeof(MAGIC_NUM)+sizeof(packet->m_header.m_type)
 				+ sizeof(packet->m_header.m_chanelId) + sizeof(packet->m_header.m_size) + packet->getSize())
 			{
 				return false;
 			}
 
-			writeQueue << m_magicNum << packet->m_header.m_type << packet->m_header.m_chanelId;
+			writeQueue << MAGIC_NUM << packet->m_header.m_type << packet->m_header.m_chanelId;
 			uint32_t size = packet->getSize();
 			writeQueue << size;
 
@@ -85,9 +88,6 @@ namespace photon
 		{
 			delete packet;
 		}
-
-	private:
-		static const uint32_t m_magicNum = 0x12345678;
 	};
 }
 

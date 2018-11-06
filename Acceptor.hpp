@@ -7,12 +7,9 @@
 
 namespace photon
 {
-	class PacketResolver;
-	class EventHandler;
-}
+    class PacketResolver;
+    class EventHandler;
 
-namespace photon
-{
 	class Acceptor : public IOComponent
 	{
 		friend class IOService;
@@ -34,6 +31,16 @@ namespace photon
 		{
 			return 	m_socket.bind(addr, addrLen) && m_socket.listen() && m_ioService->addAcceptor(this) && m_ioService->startAccept(this);
 		}
+
+        Connection* accept()
+        {
+            Socket socket = m_socket.accept();
+            if (socket)
+            {
+                return new Connection(m_ioService, m_packetResolver, m_eventHandler, std::move(socket));
+            }
+            return nullptr;
+        }
 
 	private:
 		virtual bool handleReadComplete()
@@ -58,7 +65,7 @@ namespace photon
 			return m_ioService->removeAcceptor(this) && close();
 		}
 
-		virtual Connection* createConnection()
+		Connection* createConnection()
 		{
 			return new Connection(m_ioService, m_packetResolver, m_eventHandler, m_addressFamily, m_type, m_protocol);
 		}

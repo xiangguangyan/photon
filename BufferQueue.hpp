@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <string.h>
 #include <mutex>
 #include <condition_variable>
 #include <type_traits>
@@ -92,7 +93,7 @@ namespace photon
 		BufferQueue& operator<<(const std::string& value)
 		{
 			*this << (uint32_t)value.length();
-			push(value.c_str(), value.length());
+			push(value.c_str(), (uint32_t)value.length());
 			return *this;
 		}
 
@@ -230,7 +231,7 @@ namespace photon
 
 		inline static uint32_t getSize(const std::string& value)
 		{
-			return sizeof(uint32_t) + value.size();
+			return (uint32_t)sizeof(uint32_t) + (uint32_t)value.size();
 		}
 
 		bool push(const char* buffer, uint32_t length)

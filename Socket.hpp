@@ -3,6 +3,7 @@
 
 #ifdef _WIN32
 #include <WinSock2.h>
+#include <WS2tcpip.h>
 typedef int socklen_t;
 typedef int ssize_t;
 
@@ -85,6 +86,52 @@ namespace photon
             return true;
         }
 
+        bool bind(uint16_t port, const char* ipaddr = nullptr, int addressFamily = AF_INET)
+        {
+            if (addressFamily == AF_INET)
+            {
+                sockaddr_in addr{ 0 };
+                addr.sin_family = AF_INET;
+                if (ipaddr == nullptr)
+                {
+                    addr.sin_addr.s_addr = INADDR_ANY;
+                }
+                else
+                {
+                    if (::inet_pton(AF_INET, ipaddr, &addr.sin_addr) <= 0)
+                    {
+                        std::cout << "Socket inet pton failed" << std::endl;
+                        return false;
+                    }
+                }
+                addr.sin_port = htons(port);
+                return bind((const sockaddr*)&addr, sizeof(addr));
+            }
+            else if (addressFamily == AF_INET6)
+            {
+                sockaddr_in6 addr{ 0 };
+                addr.sin6_family = AF_INET6;
+                if (ipaddr == nullptr)
+                {
+                    addr.sin6_addr = in6addr_any;
+                }
+                else
+                {
+                    if (::inet_pton(AF_INET6, ipaddr, &addr.sin6_addr) <= 0)
+                    {
+                        std::cout << "Socket inet pton failed" << std::endl;
+                        return false;
+                    }
+                }
+                addr.sin6_port = htons(port);
+                return bind((const sockaddr*)&addr, sizeof(addr));
+            }
+            else
+            {
+                return false;
+            }
+        }
+
         bool listen()
         {
             if (0 != ::listen(m_socket, SOMAXCONN))
@@ -110,6 +157,38 @@ namespace photon
             }
 
             return true;
+        }
+
+        bool connect(const char* ipaddr, uint16_t port, int addressFamily = AF_INET)
+        {
+            if (addressFamily == AF_INET)
+            {
+                sockaddr_in addr{ 0 };
+                addr.sin_family = AF_INET;
+                if (::inet_pton(AF_INET, ipaddr, &addr.sin_addr) <= 0)
+                {
+                    std::cout << "Socket inet pton failed" << std::endl;
+                    return false;
+                }
+                addr.sin_port = htons(port);
+                return connect((const sockaddr*)&addr, sizeof(addr));
+            }
+            else if (addressFamily == AF_INET6)
+            {
+                sockaddr_in6 addr{ 0 };
+                addr.sin6_family = AF_INET6;
+                if (::inet_pton(AF_INET6, ipaddr, &addr.sin6_addr) <= 0)
+                {
+                    std::cout << "Socket inet pton failed" << std::endl;
+                    return false;
+                }
+                addr.sin6_port = htons(port);
+                return connect((const sockaddr*)&addr, sizeof(addr));
+            }
+            else
+            {
+                return false;
+            }
         }
 
         bool setOption(int level, int name, const void* value, socklen_t valueLen)

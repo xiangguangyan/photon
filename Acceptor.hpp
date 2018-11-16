@@ -32,6 +32,52 @@ namespace photon
 			return 	m_socket.bind(addr, addrLen) && m_socket.listen() && m_ioService->addAcceptor(this) && m_ioService->startAccept(this);
 		}
 
+        bool listen(uint16_t port, const char* ipaddr = nullptr, int addressFamily = AF_INET)
+        {
+            if (addressFamily == AF_INET)
+            {
+                sockaddr_in addr{ 0 };
+                addr.sin_family = AF_INET;
+                if (ipaddr == nullptr)
+                {
+                    addr.sin_addr.s_addr = INADDR_ANY;
+                }
+                else
+                {
+                    if (::inet_pton(AF_INET, ipaddr, &addr.sin_addr) <= 0)
+                    {
+                        std::cout << "Socket inet pton failed" << std::endl;
+                        return false;
+                    }
+                }
+                addr.sin_port = htons(port);
+                return listen((const sockaddr*)&addr, sizeof(addr));
+            }
+            else if (addressFamily == AF_INET6)
+            {
+                sockaddr_in6 addr{ 0 };
+                addr.sin6_family = AF_INET6;
+                if (ipaddr == nullptr)
+                {
+                    addr.sin6_addr = in6addr_any;
+                }
+                else
+                {
+                    if (::inet_pton(AF_INET6, ipaddr, &addr.sin6_addr) <= 0)
+                    {
+                        std::cout << "Socket inet pton failed" << std::endl;
+                        return false;
+                    }
+                }
+                addr.sin6_port = htons(port);
+                return listen((const sockaddr*)&addr, sizeof(addr));
+            }
+            else
+            {
+                return false;
+            }
+        }
+
         Connection* accept()
         {
             Socket socket = m_socket.accept();
@@ -61,8 +107,9 @@ namespace photon
 		}
 		virtual bool handleIOError()
 		{
+            bool ret = m_ioService->removeAcceptor(this) && close();
             m_eventHandler->handleAcceptorError(this);
-			return m_ioService->removeAcceptor(this) && close();
+            return ret;
 		}
 
 		Connection* createConnection()

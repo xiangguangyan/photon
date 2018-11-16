@@ -191,10 +191,10 @@ namespace photon
 			overlapped->m_operation = Overlapped::READ;
 
 			Buffer buffer = connection->m_readQueue.reserve();
-			/*if (!buffer)      //empty buffer also deliver
+			if (!buffer)      
 			{
 				return false;
-			}*/
+			}
 
 			overlapped->m_buffer.buf = buffer.getData();
 			overlapped->m_buffer.len = buffer.getSize();
@@ -243,11 +243,11 @@ namespace photon
 			ConnectionOverlapped* overlapped = &((ConnectionCompletionKey*)data)->m_writeOverlapped;
 			overlapped->m_operation = Overlapped::WRITE;
 
-            Buffer buffer = connection->m_readQueue.front();
-            /*if (!buffer)      //empty buffer also deliver
+            Buffer buffer = connection->m_writeQueue.front();
+            if (!buffer) 
             {
                 return false;
-            }*/
+            }
 
             overlapped->m_buffer.buf = buffer.getData();
             overlapped->m_buffer.len = buffer.getSize();
@@ -406,8 +406,10 @@ namespace photon
 					return 0;
 				}
 
-				std::cout << "Get complete io component get queued completion status failed:" << ::GetLastError() << std::endl;
-				return -1;
+                if (completionKey == 0 || overlapp == nullptr)
+                {
+                    return -1;
+                }
 			}
 
 			Overlapped* overlapped = (Overlapped*)overlapp;
@@ -464,7 +466,7 @@ namespace photon
 												   {
 													   completeEvents[0].m_type = IOCompleteEvent::WRITE_COMPLETE;
 
-                                                       connection->m_readQueue.pop(numberOfBytesTransferred);
+                                                       connection->m_writeQueue.pop(numberOfBytesTransferred);
 													   if (!connection->m_writeQueue.empty())
 													   {
                                                            if (!startWrite(connection))

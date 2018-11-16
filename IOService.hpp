@@ -66,6 +66,8 @@ namespace photon
 				{
 					for (int i = 0; i < size; ++i)
 					{
+                        completeEvents[i].m_component->addRef();
+
                         if (completeEvents[i].m_type & IOCompleteEvent::READ_COMPLETE)
                         {
                             completeEvents[i].m_component->handleReadComplete();
@@ -86,6 +88,8 @@ namespace photon
                         {
                             completeEvents[i].m_component->handleIOError();
                         }
+
+                        completeEvents[i].m_component->decRef();
 					}
 				}
 				else if (size == 0)

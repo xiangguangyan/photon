@@ -146,6 +146,10 @@ namespace photon
                 if (ret > 0)
                 {
                     m_readQueue.push((uint32_t)ret);
+                    if (ret < buffer.getSize())
+                    {
+                        return true;
+                    }
                 }
                 else if (ret == -2)
                 {
@@ -168,6 +172,10 @@ namespace photon
                 if (ret > 0)
                 {
                     m_writeQueue.pop((uint32_t)ret);
+                    if (ret < buffer.getSize())
+                    {
+                        return true;
+                    }
                 }
                 else if (ret == -2)
                 {

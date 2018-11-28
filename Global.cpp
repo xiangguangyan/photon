@@ -1,21 +1,29 @@
 #ifdef _WIN32
-
 #include <Socket.hpp>
+#elif defined __linux__
+#include <signal.h>
+#endif
 
-struct NetEnv
+struct Environment
 {
-    NetEnv()
+    Environment()
     {
+#ifdef _WIN32
         WSADATA wsaData;
         WSAStartup(MAKEWORD(2, 2), &wsaData);
+#elif defined __linux__
+        signal(SIGPIPE, SIG_IGN);
+#endif
     }
 
-    ~NetEnv()
+    ~Environment()
     {
+#ifdef _WIN32
         WSACleanup();
+#elif defined __linux__
+        
+#endif
     }
 };
 
-const NetEnv netenv;
-
-#endif
+static const Environment environment;

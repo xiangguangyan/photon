@@ -171,7 +171,8 @@ int main()
     EpollService service;
 #endif
 
-	for (int i = 0; i < 10; ++i)
+    uint32_t threadCount = std::thread::hardware_concurrency() * 2 - 1;
+	for (int i = 0; i < threadCount; ++i)
 	{
 		std::thread([&service]()
 		{
@@ -179,26 +180,21 @@ int main()
 		}).detach();
 	}
 
-	sockaddr_in addr;
-	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = INADDR_ANY;
-	addr.sin_port = 11111;
-
 	Acceptor acceptor(&service, &resolver, &eventHandler, AF_INET, SOCK_STREAM);
-	if (!acceptor.listen((const sockaddr*)&addr, sizeof(addr)))
+	if (!acceptor.listen(11111))
 	{
 		std::cout << "Listen failed" << std::endl;
 	}
 
 	Connection connection(&service, &resolver, &eventHandler, AF_INET, SOCK_STREAM);
-	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	if (!connection.connect((const sockaddr*)&addr, sizeof(addr), true))
+	
+	if (!connection.connect("127.0.0.1", 11111))
 	{
 		std::cout << "Connect failed" << std::endl;
 	}
 
     Connection *conn = new Connection(&service, &resolver, &eventHandler, AF_INET, SOCK_STREAM);
-    if (!conn->connect((const sockaddr*)&addr, sizeof(addr), true))
+    if (!conn->connect("127.0.0.1", 11111))
     {
         std::cout << "Connect failed" << std::endl;
     }
@@ -219,5 +215,6 @@ int main()
 		//Sleep(1000);
 	}
 
-	return getchar();
+    service.run();
+	return 0;
 }

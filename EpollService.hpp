@@ -44,6 +44,7 @@ namespace photon
                 return false;
             }
 
+            connection->addRef();
             connection->getSocket().setBlock(false);
             return true;
         }
@@ -59,6 +60,7 @@ namespace photon
                 return false;
             }
 
+            acceptor->addRef();
             acceptor->getSocket().setBlock(false);
             return true;
         }
@@ -73,7 +75,7 @@ namespace photon
                 std::cout << "Remove connection epoll ctl failed: " << errno << std::endl;
                 return false;
             }
-
+            connection->decRef();
             return true;
         }
 
@@ -87,7 +89,7 @@ namespace photon
                 std::cout << "Remove acceptor epoll ctl failed: " << errno << std::endl;
                 return false;
             }
-
+            acceptor->decRef();
             return true;
         }
 
@@ -97,6 +99,16 @@ namespace photon
             {
                 return true;
             }
+
+            //if (!connection->read())
+            //{
+            //    return false;
+            //}
+
+            //if (connection->m_readQueue.full())
+            //{
+            //    return true;
+            //}
 
             struct epoll_event event;
             event.data.ptr = connection;
@@ -155,6 +167,16 @@ namespace photon
             {
                 return true;
             }
+
+            //if (!connection->write())
+            //{
+            //    return false;
+            //}
+
+            //if (connection->m_writeQueue.empty())
+            //{
+            //    return true;
+            //}
 
             struct epoll_event event;
             event.data.ptr = connection;
@@ -283,11 +305,13 @@ namespace photon
             for (int i = 0; i < ret; ++i)
             {
                 IOComponent* component = (IOComponent*)events[i].data.ptr;
+                component->addRef();
+                completeEvents[i].m_type = 0;
+                completeEvents[i].m_component = component;
+
                 Connection* connection = dynamic_cast<Connection*>(component);
                 if (connection != nullptr)
                 {
-                    completeEvents[i].m_type = 0;
-                    completeEvents[i].m_component = connection;
                     if (events[i].events & EPOLLIN)
                     {
                         completeEvents[i].m_type |= IOCompleteEvent::READ_COMPLETE;
@@ -358,15 +382,13 @@ namespace photon
                     Acceptor* acceptor = dynamic_cast<Acceptor*>(component);
                     if (acceptor != nullptr)
                     {
-                        completeEvents[i].m_type = 0;
-                        completeEvents[i].m_component = acceptor;
-
                         if (events[i].events & EPOLLIN)
                         {
                             completeEvents[i].m_type |= IOCompleteEvent::ACCEPT_COMPLETE;
                             Connection* conn = nullptr;
                             while((conn = acceptor->accept()) != nullptr)
                             {
+                                conn->addRef();
                                 conn->m_state |= IOComponent::IOComponentState::CONNECTED;
                                 conn->m_acceptor = acceptor;
                                 completeEvents[completeCount].m_type = IOCompleteEvent::ACCEPT_COMPLETE;
@@ -376,7 +398,7 @@ namespace photon
                         }
                         if (events[i].events & EPOLLOUT)
                         {
-                           
+                            std::cout << "Acceptor epoll out !\n";
                         }
                         if (events[i].events & EPOLLERR)
                         {

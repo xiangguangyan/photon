@@ -243,6 +243,17 @@ namespace photon
             return setOption(SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
         }
 
+        bool setReusePort(bool reuse)
+        {
+            int value = reuse ? 1 : 0;
+#ifdef _WIN32
+            return setOption(SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+#else
+            return setOption(SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value));
+#endif
+        }
+
+
         bool setBlock(bool block)
         {
             unsigned long mode = block ? 0 : 1;

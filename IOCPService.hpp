@@ -115,6 +115,7 @@ namespace photon
 				return false;
 			}
 
+            connection->addRef();
 			connection->m_userData = completionKey;
             connection->getSocket().setBlock(false);
 			return true;
@@ -138,6 +139,7 @@ namespace photon
 				return false;
 			}
 
+            acceptor->addRef();
 			acceptor->m_userData = completionKey;
             acceptor->getSocket().setBlock(false);
 			return true;
@@ -155,6 +157,7 @@ namespace photon
 			delete (ConnectionCompletionKey*)data;
 
 			connection->m_userData = nullptr;
+            connection->decRef();
 			return true;
 		}
 
@@ -170,6 +173,7 @@ namespace photon
 			delete (AcceptorCompletionKey*)data;
 
 			acceptor->m_userData = nullptr;
+            acceptor->decRef();
 			return true;
 		}
 
@@ -187,15 +191,14 @@ namespace photon
 				return false;
 			}
 
+            Buffer buffer = connection->m_readQueue.reserve();
+            if (!buffer)
+            {
+                return true;
+            }
+
 			ConnectionOverlapped* overlapped = &((ConnectionCompletionKey*)data)->m_readOverlapped;
 			overlapped->m_operation = Overlapped::READ;
-
-			Buffer buffer = connection->m_readQueue.reserve();
-			if (!buffer)      
-			{
-				return false;
-			}
-
 			overlapped->m_buffer.buf = buffer.getData();
 			overlapped->m_buffer.len = buffer.getSize();
 
@@ -203,26 +206,12 @@ namespace photon
 			DWORD flags = 0;
 			int ret = ::WSARecv(connection->getSocket().getSocket(), &overlapped->m_buffer, 1, &numberOfBytesRecv, &flags, overlapped, nullptr);
 
-			if (0 == ret)
+			if (0 == ret || WSA_IO_PENDING == ::WSAGetLastError())
 			{
 				connection->m_state |= IOComponent::IOComponentState::READING;
-				//connection->m_readQueue.push(numberOfBytesRecv);  //handled in completion
 				return true;
 			}
-			else if (SOCKET_ERROR == ret)
-			{
-				ret = ::WSAGetLastError();
-				if (WSA_IO_PENDING == ret)
-				{
-					connection->m_state |= IOComponent::IOComponentState::READING;
-					return true;
-				}
-
-				std::cout << "WSA Recv failed:" << ret << std::endl;
-				return false;
-			}
-
-			std::cout << "WSA Recv failed:" << ret << std::endl;
+			
 			return false;
 		}
 
@@ -240,41 +229,26 @@ namespace photon
 				return false;
 			}
 
-			ConnectionOverlapped* overlapped = &((ConnectionCompletionKey*)data)->m_writeOverlapped;
-			overlapped->m_operation = Overlapped::WRITE;
-
             Buffer buffer = connection->m_writeQueue.front();
-            if (!buffer) 
+            if (!buffer)
             {
-                return false;
+                return true;
             }
 
+			ConnectionOverlapped* overlapped = &((ConnectionCompletionKey*)data)->m_writeOverlapped;
+			overlapped->m_operation = Overlapped::WRITE;
             overlapped->m_buffer.buf = buffer.getData();
             overlapped->m_buffer.len = buffer.getSize();
 
 			DWORD numberOfBytesSend = 0;
 			int ret = ::WSASend(connection->getSocket().getSocket(), &overlapped->m_buffer, 1, &numberOfBytesSend, 0, overlapped, nullptr);
 
-			if (0 == ret)
+			if (0 == ret || WSA_IO_PENDING == ::WSAGetLastError())
 			{
 				connection->m_state |= IOComponent::IOComponentState::WRITING;
-                //connection->m_readQueue.pop(numberOfBytesRecv);  //handled in completion
 				return true;
 			}
-			else if (SOCKET_ERROR == ret)
-			{
-				ret = ::WSAGetLastError();
-				if (WSA_IO_PENDING == ret)
-				{
-					connection->m_state |= IOComponent::IOComponentState::WRITING;
-					return true;
-				}
-
-				std::cout << "WSA Send failed:" << ret << std::endl;
-				return false;
-			}
-
-			std::cout << "WSA Send failed:" << ret << std::endl;
+			
 			return false;
 		}
 
@@ -314,17 +288,12 @@ namespace photon
 
 			BOOL ret = AcceptExFunction(acceptor->getSocket().getSocket(), overlapped->m_connection->getSocket().getSocket(), overlapped->m_buffer, 0, sizeof(overlapped->m_buffer) / 2, sizeof(overlapped->m_buffer) / 2, nullptr, overlapped);
 
-			if (ret)
+			if (ret || WSA_IO_PENDING == ::WSAGetLastError())
 			{
 				acceptor->m_state |= IOComponent::IOComponentState::ACCEPTING;
 				return true;
 			}
-			else if (::WSAGetLastError() == WSA_IO_PENDING)
-			{
-				acceptor->m_state |= IOComponent::IOComponentState::ACCEPTING;
-				return true;
-			}
-
+			
 			return false;
 		}
 
@@ -380,167 +349,169 @@ namespace photon
 
 			BOOL ret = ConnectExFunction(connection->getSocket().getSocket(), addr, addrLen, nullptr, 0, nullptr, overlapped);
 
-			if (ret)
+			if (ret || WSA_IO_PENDING == ::WSAGetLastError())
 			{
 				connection->m_state |= IOComponent::IOComponentState::CONNECTING;
 				return true;
 			}
-			else if (::WSAGetLastError() == WSA_IO_PENDING)
-			{
-				connection->m_state |= IOComponent::IOComponentState::CONNECTING;
-				return true;
-			}
-
+			
 			return false;
 		}
 
 		virtual int getCompleteIOComponent(IOCompleteEvent(&completeEvents)[MAX_SOCKET_COUNT], int32_t timeOutMilliSeconds) override
 		{
-			DWORD numberOfBytesTransferred = 0;
-			ULONG_PTR completionKey = 0;
-			OVERLAPPED* overlapp = nullptr;
-			if (!::GetQueuedCompletionStatus(m_iocp, &numberOfBytesTransferred, &completionKey, &overlapp, timeOutMilliSeconds))
+            OVERLAPPED_ENTRY entries[MAX_SOCKET_COUNT];
+            ULONG numEntriesRemoved = 0;
+			if (!::GetQueuedCompletionStatusEx(m_iocp, entries, MAX_SOCKET_COUNT, &numEntriesRemoved, timeOutMilliSeconds, TRUE))
 			{
-				if (WAIT_TIMEOUT == ::GetLastError())
-				{
-					return 0;
-				}
-
-                if (completionKey == 0 || overlapp == nullptr)
+                if (WAIT_TIMEOUT == ::GetLastError())
                 {
-                    return -1;
+                    return 0;
                 }
+                return -1;
 			}
 
-			Overlapped* overlapped = (Overlapped*)overlapp;
+            int completeCount = numEntriesRemoved;
+            for (uint32_t i = 0; i < numEntriesRemoved; ++i)
+            {
+                Overlapped* overlapped = (Overlapped*)entries[i].lpOverlapped;
 
-			switch (overlapped->m_operation)
-			{
-			case Overlapped::IOOperation::READ:
-			{
-												  Connection* connection = ((ConnectionCompletionKey*)completionKey)->m_connection;
-												  connection->m_readQueue.lock();
-												  connection->m_state &= ~IOComponent::IOComponentState::READING;
+                switch (overlapped->m_operation)
+                {
+                case Overlapped::IOOperation::READ:
+                {
+                    Connection* connection = ((ConnectionCompletionKey*)entries[i].lpCompletionKey)->m_connection;
+                    connection->addRef();
+                    connection->m_readQueue.lock();
+                    connection->m_state &= ~IOComponent::IOComponentState::READING;
 
-												  completeEvents[0].m_component = connection;
+                    completeEvents[i].m_component = connection;
 
-                                                  if (numberOfBytesTransferred == 0 && !connection->read())
-												  {
-													  connection->m_state |= IOComponent::IOComponentState::IOERROR;
-													  completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
-												  }
-												  else
-												  {
-													  completeEvents[0].m_type = IOCompleteEvent::READ_COMPLETE;
+                    if (entries[i].dwNumberOfBytesTransferred == 0)
+                    {
+                        connection->m_state |= IOComponent::IOComponentState::IOERROR;
+                        completeEvents[i].m_type = IOCompleteEvent::IO_ERROR;
+                    }
+                    else
+                    {
+                        completeEvents[i].m_type = IOCompleteEvent::READ_COMPLETE;
 
-													  connection->m_readQueue.push(numberOfBytesTransferred);
-                                                      if (!connection->m_readQueue.full())
-                                                      {
-                                                          if (!startRead(connection))
-                                                          {
-                                                              connection->m_state |= IOComponent::IOComponentState::IOERROR;
-                                                              completeEvents[0].m_type |= IOCompleteEvent::IO_ERROR;
-                                                          }
-                                                      }
-												  }
+                        connection->m_readQueue.push(entries[i].dwNumberOfBytesTransferred);
+                        if (!connection->m_readQueue.full())
+                        {
+                            if (!startRead(connection))
+                            {
+                                connection->m_state |= IOComponent::IOComponentState::IOERROR;
+                                completeEvents[i].m_type |= IOCompleteEvent::IO_ERROR;
+                            }
+                        }
+                    }
 
-												  connection->m_readQueue.unlock();
+                    connection->m_readQueue.unlock();
 
-												  return 1;
-			}
+                    break;
+                }
 
-			case Overlapped::IOOperation::WRITE:
-			{
-												   Connection* connection = ((ConnectionCompletionKey*)completionKey)->m_connection;
-												   connection->m_writeQueue.lock();
-												   connection->m_state &= ~IOComponent::IOComponentState::WRITING;
+                case Overlapped::IOOperation::WRITE:
+                {
+                    Connection* connection = ((ConnectionCompletionKey*)entries[i].lpCompletionKey)->m_connection;
+                    connection->addRef();
+                    connection->m_writeQueue.lock();
+                    connection->m_state &= ~IOComponent::IOComponentState::WRITING;
 
-												   completeEvents[0].m_component = connection;
+                    completeEvents[i].m_component = connection;
 
-												   if (numberOfBytesTransferred == 0 && !connection->write())
-												   {
-													   connection->m_state |= IOComponent::IOComponentState::IOERROR;
-													   completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
-												   }
-												   else
-												   {
-													   completeEvents[0].m_type = IOCompleteEvent::WRITE_COMPLETE;
+                    if (entries[i].dwNumberOfBytesTransferred == 0)
+                    {
+                        connection->m_state |= IOComponent::IOComponentState::IOERROR;
+                        completeEvents[i].m_type = IOCompleteEvent::IO_ERROR;
+                    }
+                    else
+                    {
+                        completeEvents[i].m_type = IOCompleteEvent::WRITE_COMPLETE;
 
-                                                       connection->m_writeQueue.pop(numberOfBytesTransferred);
-													   if (!connection->m_writeQueue.empty())
-													   {
-                                                           if (!startWrite(connection))
-                                                           {
-                                                               connection->m_state |= IOComponent::IOComponentState::IOERROR;
-                                                               completeEvents[0].m_type |= IOCompleteEvent::IO_ERROR;
-                                                           }
-													   }
-												   }
+                        connection->m_writeQueue.pop(entries[i].dwNumberOfBytesTransferred);
+                        if (!connection->m_writeQueue.empty())
+                        {
+                            if (!startWrite(connection))
+                            {
+                                connection->m_state |= IOComponent::IOComponentState::IOERROR;
+                                completeEvents[i].m_type |= IOCompleteEvent::IO_ERROR;
+                            }
+                        }
+                    }
 
-												   connection->m_writeQueue.unlock();
+                    connection->m_writeQueue.unlock();
 
-												   return 1;
-			}
+                    break;
+                }
 
-			case Overlapped::IOOperation::ACCEPT:
-			{
-													Acceptor* acceptor = ((AcceptorCompletionKey*)completionKey)->m_acceptor;
-													acceptor->m_state &= ~IOComponent::ACCEPTING;
+                case Overlapped::IOOperation::ACCEPT:
+                {
+                    Acceptor* acceptor = ((AcceptorCompletionKey*)entries[i].lpCompletionKey)->m_acceptor;
+                    acceptor->addRef();
+                    acceptor->m_state &= ~IOComponent::ACCEPTING;
 
-													completeEvents[0].m_component = acceptor;
-													completeEvents[0].m_type = IOCompleteEvent::ACCEPT_COMPLETE;
+                    completeEvents[i].m_component = acceptor;
+                    completeEvents[i].m_type = IOCompleteEvent::ACCEPT_COMPLETE;
 
-													Connection* connection = ((AcceptorCompletionKey*)completionKey)->m_acceptorOverlapped.m_connection;
-													SOCKET listenSocket = acceptor->getSocket().getSocket();
-													connection->getSocket().setOption(SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, (const char*)&listenSocket, sizeof(listenSocket));
+                    Connection* connection = ((AcceptorCompletionKey*)entries[i].lpCompletionKey)->m_acceptorOverlapped.m_connection;
+                    connection->addRef();
+                    SOCKET listenSocket = acceptor->getSocket().getSocket();
+                    connection->getSocket().setOption(SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, (const char*)&listenSocket, sizeof(listenSocket));
 
-													connection->m_state &= ~IOComponent::IOComponentState::CONNECTING;
-													connection->m_state |= IOComponent::IOComponentState::CONNECTED;
-                                                    connection->m_acceptor = acceptor;
+                    connection->m_state &= ~IOComponent::IOComponentState::CONNECTING;
+                    connection->m_state |= IOComponent::IOComponentState::CONNECTED;
+                    connection->m_acceptor = acceptor;
 
-													completeEvents[1].m_component = connection;
-													completeEvents[1].m_type = IOCompleteEvent::ACCEPT_COMPLETE;
+                    completeEvents[completeCount].m_component = connection;
+                    completeEvents[completeCount].m_type = IOCompleteEvent::ACCEPT_COMPLETE;
+                    ++completeCount;
 
-                                                    if (!startAccept(acceptor))
-                                                    {
-                                                        acceptor->m_state |= IOComponent::IOComponentState::IOERROR;
-                                                        completeEvents[0].m_type |= IOCompleteEvent::IO_ERROR;
-                                                    }
+                    if (!startAccept(acceptor))
+                    {
+                        acceptor->m_state |= IOComponent::IOComponentState::IOERROR;
+                        completeEvents[i].m_type |= IOCompleteEvent::IO_ERROR;
+                    }
 
-													return 2;
-			}
+                    break;
+                }
 
-			case Overlapped::IOOperation::CONNECT:
-			{
-													 Connection* connection = ((ConnectionCompletionKey*)completionKey)->m_connection;
-													 
-													 completeEvents[0].m_component = connection;
+                case Overlapped::IOOperation::CONNECT:
+                {
+                    Connection* connection = ((ConnectionCompletionKey*)entries[i].lpCompletionKey)->m_connection;
+                    connection->addRef();
+                    completeEvents[i].m_component = connection;
 
-													 int seconds = 0;
-													 int bytes = sizeof(seconds);
-													 bool ret = connection->getSocket().getOption(SOL_SOCKET, SO_CONNECT_TIME, &seconds, bytes);
+                    int seconds = 0;
+                    int bytes = sizeof(seconds);
+                    bool ret = connection->getSocket().getOption(SOL_SOCKET, SO_CONNECT_TIME, &seconds, bytes);
 
-													 if (!ret || seconds == 0xFFFFFFFF)
-													 {
-														 connection->m_state |= IOComponent::IOComponentState::IOERROR;
-														 completeEvents[0].m_type = IOCompleteEvent::IO_ERROR;
-													 }
-													 else
-													 {
-                                                         connection->m_state &= ~IOComponent::IOComponentState::CONNECTING;
-														 connection->m_state |= IOComponent::IOComponentState::CONNECTED;
-														 completeEvents[0].m_type = IOCompleteEvent::CONNECT_COMPLETE;
-													 }
+                    if (!ret || seconds == 0xFFFFFFFF)
+                    {
+                        connection->m_state |= IOComponent::IOComponentState::IOERROR;
+                        completeEvents[i].m_type = IOCompleteEvent::IO_ERROR;
+                    }
+                    else
+                    {
+                        connection->m_state &= ~IOComponent::IOComponentState::CONNECTING;
+                        connection->m_state |= IOComponent::IOComponentState::CONNECTED;
+                        completeEvents[i].m_type = IOCompleteEvent::CONNECT_COMPLETE;
+                    }
 
-													 return 1;
-			}
+                    break;
+                }
 
-			default:
-			{
-					   std::cout << "Invalid io operation:" << overlapped->m_operation << std::endl;
-					   return -1;
-			}
-			}
+                default:
+                {
+                    completeEvents[i].m_type = 0;
+                    completeEvents[i].m_component = nullptr;
+                    std::cout << "Invalid io operation:" << overlapped->m_operation << std::endl;
+                }
+                }
+            }
+
+            return completeCount;
 		}
 
 	private:

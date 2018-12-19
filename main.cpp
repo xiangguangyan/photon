@@ -1,6 +1,7 @@
 #include "Buffer.hpp"
 #include "BufferQueue.hpp"
 #include "SyncBufferQueue.hpp"
+#include "WaitFreeBufferQueue.hpp"
 #include "Socket.hpp"
 #include "Acceptor.hpp"
 #include "Connection.hpp"
@@ -171,8 +172,8 @@ int main()
     EpollService service;
 #endif
 
-    uint32_t threadCount = std::thread::hardware_concurrency() * 2 - 1;
-	for (int i = 0; i < threadCount; ++i)
+    uint32_t threadCount = std::thread::hardware_concurrency() * 2;
+	for (uint32_t i = 1; i < threadCount; ++i)
 	{
 		std::thread([&service]()
 		{
@@ -181,6 +182,9 @@ int main()
 	}
 
 	Acceptor acceptor(&service, &resolver, &eventHandler, AF_INET, SOCK_STREAM);
+    acceptor.getSocket().setReuseAddr(true);
+    acceptor.getSocket().setReusePort(true);
+
 	if (!acceptor.listen(11111))
 	{
 		std::cout << "Listen failed" << std::endl;
@@ -193,11 +197,13 @@ int main()
 		std::cout << "Connect failed" << std::endl;
 	}
 
-    Connection *conn = new Connection(&service, &resolver, &eventHandler, AF_INET, SOCK_STREAM);
-    if (!conn->connect("127.0.0.1", 11111))
-    {
-        std::cout << "Connect failed" << std::endl;
-    }
+    //Connection *conn = new Connection(&service, &resolver, &eventHandler, AF_INET, SOCK_STREAM);
+    //if (!conn->connect("127.0.0.1", 11111))
+    //{
+    //    std::cout << "Connect failed" << std::endl;
+    //}
+
+    //conn->close();
 
 	DefaultPacket packet;
 	packet.m_message = "我们都是好孩子，最最听话的孩子！";
@@ -217,4 +223,43 @@ int main()
 
     service.run();
 	return 0;
+}
+
+int main_WaitFreeBufferQueue()
+{
+    WaitFreeBufferQueue<1024*128> q;
+
+    for (int i = 0; i < 12; ++i)
+    {
+        std::thread([&]()
+        {
+            int magicNum = 123456789;
+
+            while (true)
+            {
+                q << magicNum;
+            }
+        }).detach();
+
+        std::cout << "Start push thread :" << i << std::endl;
+    }
+
+
+    for (int i = 0; i < 12; ++i)
+    {
+        std::thread([&]()
+        {
+            while (true)
+            {
+                int magicNum = 0;
+                
+                q >> magicNum ;
+                std::cout << magicNum << std::endl;
+            }
+        }).detach();
+
+        std::cout << "Start pop thread :" << i << std::endl;
+    }
+    getchar();
+    return 0;
 }

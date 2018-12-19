@@ -2,6 +2,7 @@
 #define _EVENT_HANDLER_HPP_
 
 #include <iostream>
+#include <atomic>
 
 namespace photon
 {
@@ -12,9 +13,15 @@ namespace photon
 	class EventHandler
 	{
 	public:
+        EventHandler() :
+            counter(0)
+        {
+
+        }
+
 		virtual void handlePacket(Packet* packet, Connection* connection)
 		{
-			//std::cout << ((DefaultPacket*)packet)->m_message << std::endl;
+            //std::cout << ((DefaultPacket*)packet)->m_message << std::endl;
             static int count = 0;
             static auto begin = std::chrono::system_clock::now();
             if (++count >= 1000000)
@@ -28,7 +35,7 @@ namespace photon
 
 		virtual void handleAccepted(Connection* connection)
 		{
-			std::cout << "Accepted" << std::endl;
+			std::cout << "Accepted, connection count:" << ++counter << std::endl;
 		}
 
         virtual void handleConnected(Connection* connection)
@@ -38,13 +45,16 @@ namespace photon
 
 		virtual void handleConnectionError(Connection* connection)
 		{
-			std::cout << "Connection error" << std::endl;
+			std::cout << "Connection error, connection count:" << --counter << std::endl;
 		}
 
 		virtual void handleAcceptorError(Acceptor* acceptor)
 		{
 			std::cout << "Acceptor error" << std::endl;
 		}
+
+    private:
+        std::atomic<int> counter;
 	};
 }
 

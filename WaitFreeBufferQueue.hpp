@@ -1,5 +1,5 @@
-#ifndef _BUFFER_QUEUE_HPP_
-#define _BUFFER_QUEUE_HPP_
+#ifndef _WAIT_FREE_BUFFER_QUEUE_HPP_
+#define _WAIT_FREE_BUFFER_QUEUE_HPP_
 
 #include "Buffer.hpp"
 
@@ -7,89 +7,92 @@
 #include <string>
 #include <string.h>
 #include <mutex>
+#include <atomic>
 #include <type_traits>
 
 namespace photon
 {
 	template<uint32_t Length>
-	class BufferQueue
+	class WaitFreeBufferQueue
 	{
 	public:
-		BufferQueue() :
-			m_in(0u),
-			m_out(0u)
+		WaitFreeBufferQueue() :
+			m_preIn(0u),
+            m_postIn(0u),
+			m_preOut(0u),
+            m_postOut(0u)
 		{
 
 		}
 
-		BufferQueue& operator<<(const int8_t& value)
-		{
-			push(reinterpret_cast<const char*>(&value), sizeof(value));
-			return *this;
-		}
-
-		BufferQueue& operator<<(const uint8_t& value)
+		WaitFreeBufferQueue& operator<<(const int8_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const int16_t& value)
+		WaitFreeBufferQueue& operator<<(const uint8_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const uint16_t& value)
+		WaitFreeBufferQueue& operator<<(const int16_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const int32_t& value)
+		WaitFreeBufferQueue& operator<<(const uint16_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const uint32_t& value)
+		WaitFreeBufferQueue& operator<<(const int32_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const int64_t& value)
+		WaitFreeBufferQueue& operator<<(const uint32_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const uint64_t& value)
+		WaitFreeBufferQueue& operator<<(const int64_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const float& value)
+		WaitFreeBufferQueue& operator<<(const uint64_t& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const double& value)
+		WaitFreeBufferQueue& operator<<(const float& value)
 		{
 			push(reinterpret_cast<const char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator<<(const Buffer& value)
+		WaitFreeBufferQueue& operator<<(const double& value)
+		{
+			push(reinterpret_cast<const char*>(&value), sizeof(value));
+			return *this;
+		}
+
+		WaitFreeBufferQueue& operator<<(const Buffer& value)
 		{
 			*this << value.m_length;
 			push(value.m_buffer, value.m_length);
 			return *this;
 		}
 
-		BufferQueue& operator<<(const std::string& value)
+		WaitFreeBufferQueue& operator<<(const std::string& value)
 		{
 			*this << (uint32_t)value.length();
 			push(value.c_str(), (uint32_t)value.length());
@@ -97,74 +100,74 @@ namespace photon
 		}
 
 
-		BufferQueue& operator>>(int8_t& value)
+		WaitFreeBufferQueue& operator>>(int8_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(uint8_t& value)
+		WaitFreeBufferQueue& operator>>(uint8_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(int16_t& value)
+		WaitFreeBufferQueue& operator>>(int16_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(uint16_t& value)
+		WaitFreeBufferQueue& operator>>(uint16_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(int32_t& value)
+		WaitFreeBufferQueue& operator>>(int32_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(uint32_t& value)
+		WaitFreeBufferQueue& operator>>(uint32_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(int64_t& value)
+		WaitFreeBufferQueue& operator>>(int64_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(uint64_t& value)
+		WaitFreeBufferQueue& operator>>(uint64_t& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(float& value)
+		WaitFreeBufferQueue& operator>>(float& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return *this;
 		}
 
-		BufferQueue& operator>>(double& value)
+		WaitFreeBufferQueue& operator>>(double& value)
 		{
 			pop(reinterpret_cast<char*>(&value), sizeof(value));
 			return this;
 		}
 
-		BufferQueue& operator>>(Buffer& value)
+		WaitFreeBufferQueue& operator>>(Buffer& value)
 		{
 			*this >> value.m_length;
 			pop(value.m_buffer, value.m_length);
 			return *this;
 		}
 
-		BufferQueue& operator>>(std::string& value)
+		WaitFreeBufferQueue& operator>>(std::string& value)
 		{
 			uint32_t length = 0u;
 			*this >> length;
@@ -233,15 +236,13 @@ namespace photon
 			return (uint32_t)sizeof(uint32_t) + (uint32_t)value.size();
 		}
 
-		bool push(const char* buffer, uint32_t length)
+		void push(const char* buffer, uint32_t length)
 		{
-			while (freeSize() < length)
-			{
-				//队列空闲空间不足，需要等待取数据，留出足够的空间
-				return false;
-			}
+            uint32_t preIn = m_preIn.fetch_add(length);         //take position
 
-			uint32_t backFreeStart = m_in & (Length - 1);
+            while (preIn - m_postOut + length > Length);      //wait readers read
+
+			uint32_t backFreeStart = preIn & (Length - 1);
 			uint32_t backFreeToEndLen = Length - backFreeStart;
 
 			if (backFreeToEndLen >= length)
@@ -258,21 +259,18 @@ namespace photon
 				memcpy(m_buffer, buffer + backFreeToEndLen, length - backFreeToEndLen);
 			}
 
-			//更新队列尾指针
-			m_in += length;
+            while (m_postIn < preIn);                           //wait previous writer finish
 
-			return true;
+            m_postIn += length;
 		}
 
-		bool pop(char* buffer, uint32_t length)
+		void pop(char* buffer, uint32_t length)
 		{
-			while (dataSize() < length)
-			{
-				//队列数据不足，需要等待放入数据
-				return false;
-			}
+            uint32_t preOut = m_preOut.fetch_add(length);   //take position
 
-			uint32_t backDataStart = m_out & (Length - 1);
+            while (m_postIn - preOut < length);             //wait writers write
+
+			uint32_t backDataStart = preOut & (Length - 1);
 			uint32_t backDataToEndLen = Length - backDataStart;
 
 			if (backDataToEndLen >= length)
@@ -289,13 +287,12 @@ namespace photon
 				memcpy(buffer + backDataToEndLen, m_buffer, length - backDataToEndLen);
 			}
 
-			//更新队列头指针
-			m_out += length;
+            while (m_postOut < preOut);
 
-			return true;
+            m_postOut += length;
 		}
 
-		const Buffer front() const
+		/*const Buffer front() const
 		{
 			if (empty())
 			{
@@ -307,10 +304,10 @@ namespace photon
 
 			if (dataStart < dataEnd)
 			{
-				return  Buffer(const_cast<char*>(m_buffer)+dataStart, dataEnd - dataStart);
+				return Buffer(const_cast<char*>(m_buffer) + dataStart, dataEnd - dataStart);
 			}
 
-			return  Buffer(const_cast<char*>(m_buffer)+dataStart, Length - dataStart);
+			return Buffer(const_cast<char*>(m_buffer) + dataStart, Length - dataStart);
 		}
 
 		void pop(uint32_t length)
@@ -318,7 +315,7 @@ namespace photon
 			m_out += length;
 		}
 
-		Buffer reserve()
+		Buffer reserve() noexcept
 		{
 			if (full())
 			{
@@ -336,60 +333,43 @@ namespace photon
 			return Buffer(m_buffer + freeStart, Length - freeStart);
 		}
 
-		void push(uint32_t length)
+		void push(uint32_t length) noexcept
 		{
 			m_in += length;
-		}
+		}*/
 
-		bool empty() const
+		bool empty() const noexcept
 		{
-			return m_in == m_out;
+			return m_preIn == m_postOut;
 		}
 
-		bool full() const
+		bool full() const noexcept
 		{
-			return m_in - m_out == Length;
+			return m_preIn - m_postOut == Length;
 		}
 
-		uint32_t totalSize() const
+		uint32_t totalSize() const noexcept
 		{
 			return Length;
 		}
 
-		uint32_t dataSize() const
+		uint32_t dataSize() const noexcept
 		{
-			return m_in - m_out;
+			return m_postIn - m_preOut;
 		}
 
-		uint32_t freeSize() const
+		uint32_t freeSize() const noexcept
 		{
 			return Length - dataSize();
 		}
 
-		void lock()
-		{
-			m_mutex.lock();
-		}
-
-		bool tryLock()
-		{
-			return m_mutex.try_lock();
-		}
-
-		void unlock()
-		{
-			m_mutex.unlock();
-		}
-
 	private:
-		uint32_t m_in;
-		uint32_t m_out;
+        std::atomic<uint32_t> m_preIn;
+        std::atomic<uint32_t> m_postIn;
+		std::atomic<uint32_t> m_preOut;
+        std::atomic<uint32_t> m_postOut;
 		typename std::enable_if<Length != 0 && (Length & (Length - 1)) == 0, char>::type m_buffer[Length];
-		std::mutex m_mutex;
 	};
-
-	typedef BufferQueue<1024 * 256> ReadBufferQueue;
-	typedef BufferQueue<1024 * 256> WriteBufferQueue;
 }
 
-#endif //_BUFFER_QUEUE_HPP_
+#endif //_WAIT_FREE_BUFFER_QUEUE_HPP_

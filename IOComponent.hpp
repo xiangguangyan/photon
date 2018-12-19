@@ -29,15 +29,15 @@ namespace photon
 		//postPacket中在接收用户提交的数据后，需判断WRITE_QUEUE_EMPTY状态位，如被置位，需要调用IOService的startWrite
 
 		//IO组件对方关闭或者出错时置IOERROR状态位
-        enum IOComponentState : uint32_t
-        {
-            READING = 1u << 31,
-            WRITING = 1u << 30,
-            ACCEPTING = 1u << 29,
-            CONNECTING = 1u << 28,
-            CONNECTED = 1u << 27,
-            IOERROR = 1u << 26,
-        };
+		enum IOComponentState : uint32_t
+		{
+			READING = 1u << 31,
+			WRITING = 1u << 30,
+			ACCEPTING = 1u << 29,
+			CONNECTING = 1u << 28,
+			CONNECTED = 1u << 27,
+			IOERROR = 1u << 26,
+		};
 
 	public:
 		IOComponent(IOService* ioService, int addressFamily, int type, int protocol = 0) :
@@ -60,7 +60,10 @@ namespace photon
 
         virtual ~IOComponent()
         {
-
+            if (m_userData)
+            {
+                delete m_userData;
+            }
         }
 
 		Socket& getSocket()
@@ -70,7 +73,7 @@ namespace photon
 
 		bool close()
 		{
-			return m_socket.close();
+            return handleIOError() && m_socket.close();
 		}
 
 		uint32_t getState() const
@@ -85,13 +88,15 @@ namespace photon
 
         void decRef()
         {
-            if ((--m_state & 0xFF) == 0u)
+            if ((--m_state & 0xFFFF) == 0u)
             {
                 delete this;
             }
         }
 
 	private:
+
+       
 		virtual bool handleReadComplete() = 0;
 		virtual bool handleWriteComplete() = 0;
 		virtual bool handleAcceptComplete() = 0;

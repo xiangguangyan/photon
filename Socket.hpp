@@ -11,6 +11,7 @@ typedef int ssize_t;
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include<sys/ioctl.h>
 typedef int SOCKET;
@@ -221,11 +222,21 @@ namespace photon
             return true;
         }
 
-        bool setKeepAlive(bool keepAlive)
-        {
-            int value = keepAlive ? 1 : 0;
-            return setOption(SOL_SOCKET, SO_KEEPALIVE, &value, sizeof(value));
-        }
+		bool setKeepAlive(bool keepAlive, int idle = 60, int interval = 3, int count = 10)
+		{
+			if (!keepAlive)
+			{
+				int keepAliveValue = 0;
+				return setOption(SOL_SOCKET, SO_KEEPALIVE, &keepAliveValue, sizeof(keepAliveValue));
+			}
+
+			int keepAliveValue = 1;
+
+			return setOption(SOL_SOCKET, SO_KEEPALIVE, &keepAliveValue, sizeof(keepAliveValue)) &&
+				setOption(IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)) &&
+				setOption(IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval)) &&
+				setOption(IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
+		}
 
         bool setSendBuffer(int size)
         {
@@ -252,7 +263,6 @@ namespace photon
             return setOption(SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value));
 #endif
         }
-
 
         bool setBlock(bool block)
         {

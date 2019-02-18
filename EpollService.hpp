@@ -68,7 +68,7 @@ namespace photon
         virtual bool removeConnection(Connection* connection) override
         {
             struct epoll_event event;
-            event.data.ptr = connection;
+            event.data.ptr = NULL;
             event.events = 0u;
             if (::epoll_ctl(m_epoll, EPOLL_CTL_DEL, connection->getSocket().getSocket(), &event) != 0)
             {
@@ -82,7 +82,7 @@ namespace photon
         virtual bool removeAcceptor(Acceptor* acceptor) override
         {
             struct epoll_event event;
-            event.data.ptr = acceptor;
+            event.data.ptr = NULL;
             event.events = 0u;
             if (::epoll_ctl(m_epoll, EPOLL_CTL_DEL, acceptor->getSocket().getSocket(), &event) != 0)
             {
@@ -301,11 +301,21 @@ namespace photon
                 return -1;
             }
            
+			for (int i = 0; i < ret; ++i)
+			{
+				((IOComponent*)events[i].data.ptr)->addRef();
+			}
+
             int completeCount = ret;
             for (int i = 0; i < ret; ++i)
             {
                 IOComponent* component = (IOComponent*)events[i].data.ptr;
-                component->addRef();
+				/*if (component == NULL || component->m_ioService != this)
+				{
+					continue;
+				}
+                component->addRef();*/
+
                 completeEvents[i].m_type = 0;
                 completeEvents[i].m_component = component;
 

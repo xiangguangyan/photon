@@ -281,16 +281,22 @@ namespace photon
 
         virtual bool handleAcceptComplete()
         {
-            m_readQueue.lock();
-            if (!m_ioService->addConnection(this) || !m_ioService->startRead(this))
-            {
-                m_readQueue.unlock();
-                decRef();
-                return false;
-            }
-            m_readQueue.unlock();
-            m_eventHandler->handleAccepted(this);
-            return true;
+			m_readQueue.lock();
+			if (!m_ioService->addConnection(this))
+			{
+				m_readQueue.unlock();
+				decRef();
+				return false;
+			}
+			if (!m_ioService->startRead(this))
+			{
+				m_readQueue.unlock();
+				handleIOError();
+				return false;
+			}
+			m_readQueue.unlock();
+			m_eventHandler->handleAccepted(this);
+			return true;
         }
 
 		virtual bool handleConnectComplete()

@@ -238,6 +238,12 @@ namespace photon
 				setOption(IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
 		}
 
+		bool setNoDelay(bool noDelay)
+		{
+			int noDelayValue = noDelay ? 1 : 0;
+			return setOption(IPPROTO_TCP, TCP_NODELAY, &noDelayValue, sizeof(noDelayValue));
+		}
+
         bool setSendBuffer(int size)
         {
             return setOption(SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));

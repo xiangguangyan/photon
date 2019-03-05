@@ -65,6 +65,13 @@ namespace photon
 
 			Packet* packet = createPacket(header);
 
+			if (packet == nullptr)
+			{
+				std::cout << "Invalid packet header, packet length:" << header.m_size << ", packet type:" << header.m_type << std::endl;
+				readQueue.pop(header.m_size);
+				return nullptr;
+			}
+
 			uint32_t oldSize = readQueue.dataSize();
 			packet->deserialize(readQueue);
 

@@ -8,6 +8,8 @@
 #include "EventHandler.hpp"
 #include "Queue.hpp"
 
+#include <thread>
+
 namespace photon
 {
 	class Connection : public IOComponent
@@ -192,22 +194,31 @@ namespace photon
 
 		bool postPacket(const Packet* packet)
 		{
-            m_writeQueue.lock();
+			bool ret = false;
+			LOOP:
+			{
+				m_writeQueue.lock();
 
-            bool ret = m_packetResolver->serialize(packet, m_writeQueue);
+				ret = m_packetResolver->serialize(packet, m_writeQueue);
 
-            if (!(m_state.load() & IOComponentState::WRITING) && !m_writeQueue.empty())
-            {
-                if (!m_ioService->startWrite(this))
-                {
-                    m_writeQueue.unlock();
-                    handleIOError();
-                    return false;
-                }
-            }
+				if (!(m_state.load() & IOComponentState::WRITING) && !m_writeQueue.empty())
+				{
+					if (!m_ioService->startWrite(this))
+					{
+						m_writeQueue.unlock();
+						handleIOError();
+						return false;
+					}
+				}
 
-            m_writeQueue.unlock();
-            return ret;
+				m_writeQueue.unlock();
+			}
+			if (!ret)
+			{
+				std::this_thread::yield();
+				goto LOOP;
+			}
+			return ret;
 		}
 
 	private:
